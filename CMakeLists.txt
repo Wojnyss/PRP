@@ -16,7 +16,7 @@ find_package(SDL2 REQUIRED)
 find_package(visualization_msgs REQUIRED)
 
 set(SRC
-        src/nodes/io_node.cpp
+        src/odometry.cpp
         src/nodes/io_node.cpp
         include/helper.hpp
 )

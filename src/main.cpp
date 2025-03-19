@@ -11,6 +11,8 @@ int main(int argc, char* argv[]) {
 
     auto io_node = std::make_shared<nodes::IoNode>();
 
+    auto line_node = std::make_shared<nodes::LineNode>();
+
     executor->add_node(io_node);
 
     auto executor_thread = std::thread([&executor]() { executor->spin(); });
@@ -60,7 +62,7 @@ int main(int argc, char* argv[]) {
     //     io_node->set_motor_speeds(motor_speed);
     //     rate.sleep();
     // }
-
+/*
     //Odometrie ---------------------------------------------------------------------
     Odometry odom(0.1, 0.5, 360);
     
@@ -106,9 +108,26 @@ int main(int argc, char* argv[]) {
         rclcpp::spin_some(io_node);
         rate.sleep();
     }
+*/
+    while (rclcpp::ok()) {
+        rclcpp::spin_some(line_node);
+        nodes::DiscreteLinePose discrete_pose = line_node->get_discrete_line_pose();
 
-    rclcpp::shutdown();
-    return 0;
+        switch (discrete_pose) {
+            case nodes::DiscreteLinePose::LineOnLeft:
+                RCLCPP_INFO(line_node->get_logger(), "Čára vlevo");
+            break;
+            case nodes::DiscreteLinePose::LineOnRight:
+                RCLCPP_INFO(line_node->get_logger(), "Čára vpravo");
+            break;
+            case nodes::DiscreteLinePose::LineNone:
+                RCLCPP_INFO(line_node->get_logger(), "Čára nenalezena");
+            break;
+            default:
+                break;
+        }
+        rate.sleep();
+    }
 
     //executor->spin();
 
