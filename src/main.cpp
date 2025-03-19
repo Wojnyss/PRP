@@ -1,6 +1,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include "RosExampleClass.hpp"
 #include "nodes/io_node.hpp"
+#include "odometry.hpp"
 
 
 int main(int argc, char* argv[]) {
@@ -60,7 +61,24 @@ int main(int argc, char* argv[]) {
     //     rate.sleep();
     // }
 
+    //Odometrie ---------------------------------------------------------------------
+    Odometry odom(0.1, 0.5, 360);
+    
+    // Simulované pulzy z enkodérů
+    int pulses_left = 180;   // např. 180 pulzů z levého kola
+    int pulses_right = 200;  // např. 200 pulzů z pravého kola
 
+    odom.update(pulses_left, pulses_right);
+
+    // Získání a vypsání aktuální polohy
+    Pose current_pose = odom.getPose();
+    std::cout << "Aktuální poloha: " << std::endl;
+    std::cout << "x = " << current_pose.x << " m" << std::endl;
+    std::cout << "y = " << current_pose.y << " m" << std::endl;
+    std::cout << "theta = " << current_pose.theta << " rad" << std::endl;
+
+    //-------------------------------------------------------------------------------
+    
     bool waiting_for_reset = false;
     std::array<int32_t, 2> encoders_basic = io_node->get_encoder_values();
 
