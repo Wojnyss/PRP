@@ -52,7 +52,7 @@ namespace nodes {
 
 
      };
-
+/*
     enum class DiscreteLinePose {
         LineOnLeft,
         LineOnRight,
@@ -83,7 +83,7 @@ namespace nodes {
         float estimate_continuous_line_pose(float left_value, float right_value);
 
         DiscreteLinePose estimate_descrete_line_pose(float l_norm, float r_norm);
-    };
+    };*/
  }
 
 

@@ -64,7 +64,7 @@ namespace nodes{
         // RCLCPP_INFO(this->get_logger(), "Turned on");
 
     }
-
+/*
     LineNode::LineNode() : Node("line_node") {
     line_sensors_subscriber_ = this->create_subscription<std_msgs::msg::UInt16MultiArray>(
         "/bpc_prp_robot/line_sensors", 10,
@@ -113,7 +113,7 @@ DiscreteLinePose LineNode::estimate_descrete_line_pose(float l_norm, float r_nor
 
 DiscreteLinePose LineNode::get_discrete_line_pose() const {
     return last_discrete_pose_;
-}
+}*/
 }
 
 
