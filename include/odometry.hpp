@@ -2,6 +2,9 @@
 #define ODOMETRY_HPP
 
 #include <cmath>
+#include <vector>
+#include <cstdint>
+#include "nodes/io_node.hpp"
 
 // Struktura představující aktuální polohu robota.
 struct Pose {
@@ -13,25 +16,24 @@ struct Pose {
 // Třída pro výpočet odometrie.
 class Odometry {
 public:
-    // Konstruktor nastaví průměr kola, rozteč kol a počet pulzů na jeden oběh.
-    Odometry(double wheel_diameter, double wheel_base, int pulses_per_rev);
+    Odometry(double wheel_diameter, double wheel_base, int pulses_per_rev_l_, int pulses_per_rev_r_);
 
-    // Funkce pro aktualizaci polohy na základě počtu pulzů z obou enkodérů.
     void update(int pulses_left, int pulses_right);
-
-    // Vrací aktuální polohu.
     Pose getPose() const;
-
-    // Resetuje polohu na počátek.
     void resetPose();
 
-private:
-    double wheel_diameter_; // průměr kola (v metrech)
-    double wheel_base_;     // rozteč kol (v metrech)
-    int pulses_per_rev_;    // počet pulzů za jeden oběh kola
-    Pose current_pose_;     // aktuální polohové souřadnice
+    // Rychlost ve směru vpřed (0.0–1.0), zatáčení ve stupních (-90 až +90)
+    void drive(double forward_speed, double turn_rate_deg);
 
-    // (Volitelně) interní pomocná funkce pro normalizaci úhlu.
+private:
+    double wheel_diameter_;
+    double wheel_base_;
+    int pulses_per_rev_l_;
+    int pulses_per_rev_r_;
+    Pose current_pose_;
+
+    std::shared_ptr<nodes::IoNode> io_node_ = std::make_shared<nodes::IoNode>();
+
     double normalizeAngle(double angle);
 };
 

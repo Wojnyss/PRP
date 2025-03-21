@@ -5,83 +5,70 @@
 int main(int argc, char* argv[]) {
     rclcpp::init(argc, argv);
 
-    // Vytvoření ROS executoru
     auto executor = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
-
-    // Vytvoření ROS uzlů
     auto io_node = std::make_shared<nodes::IoNode>();
+    auto line_node = std::make_shared<nodes::LineNode>();
 
-    // Přidání uzlů do executoru
     executor->add_node(io_node);
+    executor->add_node(line_node);
 
-    // Spuštění executor ve vlákně
     auto executor_thread = std::thread([&executor]() { executor->spin(); });
+    rclcpp::Rate rate(10);
 
-    // Inicializace motorových rychlostí
-    std::vector<uint8_t> motor_speed = {127,127};
+    Odometry odom(0.07082, 0.12539, 570, 580);
 
-    rclcpp::Rate rate(10); // 10 Hz loop
+    bool moving = false;
+    bool tracking_line = false;
 
-    // Odometrie setup (parametry: průměr kola, rozteč kol, pulzy na otáčku)
-    // Odometry odom(65.57, 128.5, 572);
-    Odometry odom(0.0006557, 0.1285, 2000);
+    const double max_turn_angle_deg = 30.0; // maximální úhel otáčení při extrémním vychýlení
 
-    bool moving = false;  // Indikátor pohybu
-    Pose start_pose;      // Výchozí poloha
-    const double target_distance = 2.0; // Cíl = 1 metr
+    io_node->turn_on_leds({100, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}); // žlutá LED – čekání na start
+    RCLCPP_INFO(io_node->get_logger(), "Čekám na stisk tlačítka 1 pro zahájení sledování čáry...");
+
+    while (rclcpp::ok()) {
+        int start_button = io_node->get_button_pressed();
+        if (start_button == 1) {
+            moving = true;
+            tracking_line = true;
+            io_node->turn_on_leds({0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}); // zelená LED
+            RCLCPP_INFO(io_node->get_logger(), "Zahajuji sledování čáry.");
+            break;
+        }
+        rate.sleep();
+    }
 
     while (rclcpp::ok()) {
         auto encoders = io_node->get_encoder_values();
-        RCLCPP_INFO(io_node->get_logger(), "Encoder Values: [%d, %d]", encoders[0], encoders[1]);
-
         int button = io_node->get_button_pressed();
-        RCLCPP_INFO(io_node->get_logger(), "Stisknuté tlačítko: %d", button);
 
-        // Resetování odometrie po stisku tlačítka 0
         if (button == 0) {
             odom.resetPose();
-            RCLCPP_INFO(io_node->get_logger(), "Resetování odometrie - připraveno na další jízdu.");
+            RCLCPP_INFO(io_node->get_logger(), "Reset - přerušuji cyklus.");
             moving = false;
+            tracking_line = false;
+            odom.drive(0.0, 0.0);
+            io_node->turn_on_leds({100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}); // červená LED
+            break;
         }
 
-        // Spustíme jízdu po stisku tlačítka 1
-        if (button == 1 && !moving) {
-            odom.resetPose(); // Reset odometrie
-            start_pose = odom.getPose();
-            moving = true;
-            motor_speed = {255, 255}; // Nastavíme maximální rychlost
-            io_node->set_motor_speeds(motor_speed);
-            RCLCPP_INFO(io_node->get_logger(), "Začínám jízdu na 1 metr...");
-        }
-
-        if (moving) {
-            // Aktualizace odometrie
+        if (moving && tracking_line) {
             odom.update(encoders[0], encoders[1]);
 
-            // Výpočet ujeté vzdálenosti
-            Pose current_pose = odom.getPose();
-            double distance_traveled = std::sqrt(
-                std::pow(current_pose.x - start_pose.x, 2) +
-                std::pow(current_pose.y - start_pose.y, 2)
-            );
+            double forward = 0.1;
+            double line_offset = line_node->get_continuous_line_pose(); // -1 (vlevo) až +1 (vpravo)
+            double turn = line_offset * max_turn_angle_deg; // stupňový odklon
 
-            RCLCPP_INFO(io_node->get_logger(), "Ujeto: %.2f m", distance_traveled);
-
-            if (distance_traveled >= target_distance) {
-                motor_speed = {127, 127}; // Zastavení robota
-                io_node->set_motor_speeds(motor_speed);
-                moving = false;
-                RCLCPP_INFO(io_node->get_logger(), "Cíl dosažen - zastavuji. Stiskněte tlačítko 0 pro nový pokus.");
-            }
+            odom.drive(forward, turn);
         }
 
         rate.sleep();
     }
 
-    executor_thread.join(); // Po ukončení ROS uzavřeme executor
+    executor_thread.join();
     rclcpp::shutdown();
     return 0;
 }
+
 
 
 /*

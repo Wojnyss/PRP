@@ -3,6 +3,9 @@
 #include <nodes/io_node.hpp>
 #include <rclcpp/node.hpp>
 
+float l_max = 280.0f;
+float r_max = 280.0f;
+
 namespace nodes{
     IoNode::IoNode() : Node("io_node") {
         button_subscriber_ = this->create_subscription<std_msgs::msg::UInt8>(
@@ -64,56 +67,65 @@ namespace nodes{
         // RCLCPP_INFO(this->get_logger(), "Turned on");
 
     }
-/*
+
     LineNode::LineNode() : Node("line_node") {
     line_sensors_subscriber_ = this->create_subscription<std_msgs::msg::UInt16MultiArray>(
         "/bpc_prp_robot/line_sensors", 10,
         std::bind(&LineNode::on_line_sensors_msg, this, std::placeholders::_1));
-}
-
-LineNode::~LineNode() {}
-
-void LineNode::on_line_sensors_msg(std::shared_ptr<std_msgs::msg::UInt16MultiArray> msg) {
-    if (msg->data.size() < 2) {
-        RCLCPP_WARN(this->get_logger(), "Received line sensor message with insufficient data");
-        return;
     }
 
-    float left_value = static_cast<float>(msg->data[0]);
-    float right_value = static_cast<float>(msg->data[1]);
+    LineNode::~LineNode() {}
 
-    std::cout << "Left value: " << left_value << std::endl;
-    std::cout << "Right value: " << right_value << std::endl;
+    void LineNode::on_line_sensors_msg(std::shared_ptr<std_msgs::msg::UInt16MultiArray> msg) {
+        if (msg->data.size() < 2) {
+            RCLCPP_WARN(this->get_logger(), "Received line sensor message with insufficient data");
+            return;
+        }
 
-    float l_norm = left_value / 200.0f;  // Normalizace hodnot (levý senzor má max 200)
-    float r_norm = right_value / 50.0f;  // Normalizace hodnot (pravý senzor má max 50)
+        float left_value = static_cast<float>(msg->data[1]);
+        float right_value = static_cast<float>(msg->data[0]);
 
-    DiscreteLinePose discrete_pose = estimate_descrete_line_pose(l_norm, r_norm);
-    last_discrete_pose_ = discrete_pose;
+        //std::cout << "Left value: " << left_value << std::endl;
+        // std::cout << "Right value: " << right_value << std::endl;
 
-    RCLCPP_INFO(this->get_logger(), "Discrete Pose: %d", static_cast<int>(discrete_pose));
-}
 
-float LineNode::estimate_continuous_line_pose(float left_value, float right_value) {
-    float total = left_value + right_value;
-    if (total == 0) return 0.0f; // Pokud žádná čára není detekována
-    return (right_value / 50.0f - left_value / 200.0f); // Normalizovaná pozice upravená podle rozsahu senzorů
-}
+        float l_norm = left_value / l_max;  // Normalizace hodnot (levý senzor má max 200)
+        float r_norm = right_value / r_max;  // Normalizace hodnot (pravý senzor má max 50)
 
-DiscreteLinePose LineNode::estimate_descrete_line_pose(float l_norm, float r_norm) {
-    const float threshold = 0.2f; // Práh detekce
-    bool left_detected = l_norm > threshold;
-    bool right_detected = r_norm > threshold;
+        DiscreteLinePose discrete_pose = estimate_descrete_line_pose(l_norm, r_norm);
+        last_discrete_pose_ = discrete_pose;
+        last_continuous_line_pose = estimate_continuous_line_pose(l_norm, r_norm);
 
-    if (left_detected && right_detected) return DiscreteLinePose::LineBoth;
-    if (left_detected) return DiscreteLinePose::LineOnLeft;
-    if (right_detected) return DiscreteLinePose::LineOnRight;
-    return DiscreteLinePose::LineNone;
-}
+        //RCLCPP_INFO(this->get_logger(), "Discrete Pose: %d", static_cast<int>(discrete_pose));
+    }
 
-DiscreteLinePose LineNode::get_discrete_line_pose() const {
-    return last_discrete_pose_;
-}*/
+    float LineNode::estimate_continuous_line_pose(float left_value, float right_value) {
+        float total = left_value + right_value;
+        if (total == 0) return 0.0f; // Pokud žádná čára není detekována
+        return (right_value / r_max - left_value / l_max); // Normalizovaná pozice upravená podle rozsahu senzorů
+    }
+
+    DiscreteLinePose LineNode::estimate_descrete_line_pose(float l_norm, float r_norm) {
+        const float threshold_l = 0.1f; // Práh detekce
+        const float threshold_r = 0.1f;
+        bool left_detected = l_norm > threshold_l;
+        bool right_detected = r_norm > threshold_r;
+
+        if (left_detected && right_detected) return DiscreteLinePose::LineBoth;
+        if (left_detected) return DiscreteLinePose::LineOnLeft;
+        if (right_detected) return DiscreteLinePose::LineOnRight;
+        return DiscreteLinePose::LineNone;
+    }
+
+    DiscreteLinePose LineNode::get_discrete_line_pose() const {
+        return last_discrete_pose_;
+    }
+
+
+    float LineNode::get_continuous_line_pose() const {
+        return last_continuous_line_pose;
+    }
+
 }
 
 
