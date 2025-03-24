@@ -94,7 +94,7 @@ namespace nodes{
 
         DiscreteLinePose discrete_pose = estimate_descrete_line_pose(l_norm, r_norm);
         last_discrete_pose_ = discrete_pose;
-        last_continuous_line_pose = estimate_continuous_line_pose(l_norm, r_norm);
+        last_continuous_line_pose = estimate_continuous_line_pose(left_value, right_value);
 
         //RCLCPP_INFO(this->get_logger(), "Discrete Pose: %d", static_cast<int>(discrete_pose));
     }
