@@ -19,13 +19,14 @@ int main(int argc, char* argv[]) {
     rclcpp::Rate rate(50); // 50 Hz pro jemnější řízení
     const float dt = 1.0f / 50.0f; // vzorkovací perioda
 
-    Odometry odom(0.07082, 0.12539, 570, 580);
+    Odometry odom(0.07082, 0.12539, 570, 570.7);
 
     // Parametry PID regulátoru (lze si pohrát s laděním)
-    algorithms::Pid pid(500.0f, 0.0f, 0.0f); // KP, KI, KD
+    algorithms::Pid pid(5.0f, 0.0f, 1.5f); // KP, KI, KD //18 0 3
 
-    const double forward_speed = 0.10; // stálá dopředná rychlost
-    const double max_turn_angle = 2.0; // maximální úhel zatáčení
+    const double forward_speed = 0.08 //0.08
+    ; // stálá dopředná rychlost
+    const double max_turn_angle = 10.0; // maximální úhel zatáčení //2.0
 
     // Čekání na stisk tlačítka 1
     io_node->turn_on_leds({100, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}); // žlutá LED
@@ -68,8 +69,15 @@ int main(int argc, char* argv[]) {
         }
 
         rate.sleep();
-    }
+    }/*
 
+
+    odom.resetPose();
+    RCLCPP_INFO(io_node->get_logger(), "Jedu rovně s konstantní rychlostí 0.1 m/s");
+    while (rclcpp::ok()) {
+        odom.drive(0.1, 0.0);
+        rate.sleep();
+    }*/
     executor_thread.join();
     rclcpp::shutdown();
     return 0;

@@ -3,8 +3,8 @@
 #include <nodes/io_node.hpp>
 #include <rclcpp/node.hpp>
 
-float l_max = 320.0f;
-float r_max = 620.0f;
+float l_max = 280.0f;
+float r_max = 400.0f;
 
 namespace nodes{
     IoNode::IoNode() : Node("io_node") {
