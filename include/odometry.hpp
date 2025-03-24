@@ -10,7 +10,7 @@
 struct Pose {
     double x;      // souřadnice x (v metrech)
     double y;      // souřadnice y (v metrech)
-    double theta;  // orientace (v radiánech)
+    double theta;  // orientace (ve stupních)
 };
 
 // Třída pro výpočet odometrie.
@@ -34,7 +34,7 @@ private:
 
     std::shared_ptr<nodes::IoNode> io_node_ = std::make_shared<nodes::IoNode>();
 
-    double normalizeAngle(double angle);
+    double normalizeAngle(double angle_deg);  // Nyní pracuje ve stupních
 };
 
 #endif // ODOMETRY_HPP
