@@ -5,7 +5,7 @@
 #include <cmath>
 
 //#define debug
-//#define PID
+#define PID
 
 int main(int argc, char* argv[]) {
     rclcpp::init(argc, argv);
@@ -25,14 +25,19 @@ int main(int argc, char* argv[]) {
     Odometry odom(0.07082, 0.12539, 570, 570.7);
 
     // Parametry PID regulátoru (lze si pohrát s laděním)
-    algorithms::Pid pid(5.0f, 0.0f, 1.5f); // KP, KI, KD //18 0 3
 
-    const double forward_speed = 0.04 //0.04
-    ; // stálá dopředná rychlost
-    const double max_turn_angle = 2.0; // maximální úhel zatáčení //2.0
 
+#ifdef PID
+    algorithms::Pid pid(6.0f, 0.68f, 0.013f); // KP, KI, KD //18 0 3
+    const double forward_speed = 0.03; // stálá dopředná rychlost
+    const double max_turn_angle = 10.0; // maximální úhel zatáčení
+
+#else //BANG-BANG
+    const double forward_speed = 0.04; // stálá dopředná rychlost
+    const double max_turn_angle = 2.0; // maximální úhel zatáčení
+#endif
     // Čekání na stisk tlačítka 1
-    io_node->turn_on_leds({100, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}); // žlutá LED
+    io_node->turn_on_leds({100, 100, 0, 100, 100, 0, 100, 100, 0, 0, 0, 0}); // žlutá LED
     RCLCPP_INFO(io_node->get_logger(), "Čekám na stisk tlačítka 1 pro spuštění sledování čáry...");
 
 
@@ -49,48 +54,49 @@ int main(int argc, char* argv[]) {
 
     while (rclcpp::ok()) {
         if (io_node->get_button_pressed() == 1) {
-            io_node->turn_on_leds({0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}); // zelená LED
+            io_node->turn_on_leds({100, 100, 0, 100, 100, 0, 100, 100, 0, 0, 0, 0}); // zluta LED
             RCLCPP_INFO(io_node->get_logger(), "Zahajuji sledování čáry pomocí PID regulátoru.");
             break;
         }
         rate.sleep();
     }
 
-    // Smyčka sledování čáry
     while (rclcpp::ok()) {
         auto encoders = io_node->get_encoder_values();
         odom.update(encoders[0], encoders[1]);
-
-        // Hodnota pozice čáry: -1.0 = vlevo, 0 = uprostřed, 1.0 = vpravo
-        float line_error = line_node->get_continuous_line_pose(); // (float)
-
-        // PID výstup – řízení zatáčení
-        float correction = pid.step(line_error, dt);
-
-        // Omezíme výstup PID na rozsah řízení otáčení (např. ±max_turn_angle)
-        correction = std::clamp(correction, static_cast<float>(-max_turn_angle), static_cast<float>(max_turn_angle));
-
-
-        odom.drive(forward_speed, correction); // řízení vpřed + odklon
-
-        RCLCPP_INFO(io_node->get_logger(), "Čára: %.2f | Korekce: %.2f°", line_error, correction);
 
         // Nouzové ukončení – tlačítko 0
         if (io_node->get_button_pressed() == 0) {
             odom.drive(0.0, 0.0);
             RCLCPP_INFO(io_node->get_logger(), "Zastavuji program.");
-            io_node->turn_on_leds({100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}); // červená LED
+            io_node->turn_on_leds({100, 0, 0, 100, 0, 0, 100, 0, 0, 0, 0, 0}); // červená LED
             break;
+        }
+
+        auto discrete_pose = line_node->get_discrete_line_pose();
+
+        if (discrete_pose == nodes::DiscreteLinePose::LineBoth) {
+            // Pokud jsou obě čidla na čáře – jeď rovně bez korekce
+            odom.drive(forward_speed, 0.0);
+            // RCLCPP_INFO(io_node->get_logger(), "Čára pod oběma senzory – jedu rovně.");
+        } else {
+            // Jinak řízení pomocí PID
+            float line_error = line_node->get_continuous_line_pose();
+            float correction = pid.step(line_error, dt);
+            correction = std::clamp(correction, static_cast<float>(-max_turn_angle), static_cast<float>(max_turn_angle));
+            odom.drive(forward_speed, correction);
+            RCLCPP_INFO(io_node->get_logger(), "Čára: %.2f | Korekce: %.2f°", line_error, correction);
         }
 
         rate.sleep();
     }
+
 #else
 
     // Čekání na tlačítko 1
     while (rclcpp::ok()) {
         if (io_node->get_button_pressed() == 1) {
-            io_node->turn_on_leds({0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
+            io_node->turn_on_leds({0, 100, 0, 0, 100, 0, 0, 100, 0, 0, 0, 0});
             RCLCPP_INFO(io_node->get_logger(), "Zahajuji bang-bang sledování čáry pomocí diskrétní funkce.");
             break;
         }
@@ -126,7 +132,7 @@ int main(int argc, char* argv[]) {
 
         if (io_node->get_button_pressed() == 0) {
             odom.drive(0.0, 0.0);
-            io_node->turn_on_leds({100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
+            io_node->turn_on_leds({100, 0, 0, 100, 0, 0, 100, 0, 0, 0, 0, 0});
             RCLCPP_INFO(io_node->get_logger(), "Zastavuji bang-bang cyklus.");
             break;
         }
