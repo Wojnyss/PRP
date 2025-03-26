@@ -3,7 +3,7 @@
 #include <nodes/io_node.hpp>
 #include <rclcpp/node.hpp>
 
-float l_max = 280.0f;
+float l_max = 350.0f;
 float r_max = 400.0f;
 
 namespace nodes{
@@ -85,12 +85,11 @@ namespace nodes{
         float left_value = static_cast<float>(msg->data[1]);
         float right_value = static_cast<float>(msg->data[0]);
 
-        //std::cout << "Left value: " << left_value << std::endl;
-        // std::cout << "Right value: " << right_value << std::endl;
-
-
         float l_norm = left_value / l_max;  // Normalizace hodnot (levý senzor má max 200)
         float r_norm = right_value / r_max;  // Normalizace hodnot (pravý senzor má max 50)
+
+        // std::cout << "Left value: " << left_value   << ", " << l_norm   << std::endl;
+        // std::cout << "Right value: " << right_value << ", " << r_norm << std::endl;
 
         DiscreteLinePose discrete_pose = estimate_descrete_line_pose(l_norm, r_norm);
         last_discrete_pose_ = discrete_pose;
@@ -106,8 +105,8 @@ namespace nodes{
     }
 
     DiscreteLinePose LineNode::estimate_descrete_line_pose(float l_norm, float r_norm) {
-        const float threshold_l = 0.1f; // Práh detekce
-        const float threshold_r = 0.1f;
+        const float threshold_l = 0.08f; // Práh detekce
+        const float threshold_r = 0.08f;
         bool left_detected = l_norm > threshold_l;
         bool right_detected = r_norm > threshold_r;
 
