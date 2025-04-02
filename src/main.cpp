@@ -4,7 +4,43 @@
 #include "algorithms/pid.hpp"
 #include <cmath>
 
+
 int main(int argc, char* argv[]) {
+
+    rclcpp::init(argc, argv);
+
+    // Vytvoření instance LidarNode
+    auto lidar_node = std::make_shared<nodes::LidarNode>();
+
+    // Spuštění vláken ROS executor
+    auto executor = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
+    executor->add_node(lidar_node);
+
+    rclcpp::Rate rate(10);  // 10 Hz
+
+    // Spuštění vlákna pro executor (zpracovává zprávy ze scan)
+    std::thread executor_thread([&executor]() {
+        executor->spin();
+    });
+
+    // Smyčka pro periodické výpisy vzdáleností
+    while (rclcpp::ok()) {
+        float front = lidar_node->get_forward_distance();
+        float back = lidar_node->get_back_distance();
+        float left = lidar_node->get_left_distance();
+        float right = lidar_node->get_right_distance();
+
+        RCLCPP_INFO(lidar_node->get_logger(),
+            "LiDAR vzdálenosti [m] → Vpřed: %.2f | Vzad: %.2f | Vlevo: %.2f | Vpravo: %.2f",
+            front, back, left, right);
+
+        rate.sleep();
+    }
+
+    executor_thread.join();
+    rclcpp::shutdown();
+    return 0;
+    /*
     rclcpp::init(argc, argv);
 
     auto executor = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
@@ -77,8 +113,8 @@ int main(int argc, char* argv[]) {
     while (rclcpp::ok()) {
         odom.drive(0.1, 0.0);
         rate.sleep();
-    }*/
+    }
     executor_thread.join();
     rclcpp::shutdown();
-    return 0;
+    return 0;*/
 }

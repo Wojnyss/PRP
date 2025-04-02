@@ -6,6 +6,7 @@
 #include <std_msgs/msg/u_int32_multi_array.hpp>
 #include <std_msgs/msg/u_int16_multi_array.hpp>
 #include <mutex>
+#include <sensor_msgs/msg/laser_scan.hpp>
 
 namespace nodes {
      class IoNode : public rclcpp::Node {
@@ -86,6 +87,34 @@ namespace nodes {
 
         DiscreteLinePose estimate_descrete_line_pose(float l_norm, float r_norm);
     };
+
+    class LidarNode : public rclcpp::Node {
+    public:
+        LidarNode();
+
+        // Získání vzdáleností v hlavních směrech (v metrech)
+        float get_forward_distance() const;
+        float get_back_distance() const;
+        float get_left_distance() const;
+        float get_right_distance() const;
+
+    private:
+        // Callback pro příjem zpráv z LiDARu
+        void on_lidar_msg(const sensor_msgs::msg::LaserScan::SharedPtr msg);
+
+        // Pomocná funkce – vrací vzdálenost pro zvolený úhel
+        float get_range_at_angle(const sensor_msgs::msg::LaserScan::SharedPtr& msg, float angle_rad);
+
+        // ROS2 subscriber na zprávy typu LaserScan
+        rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr lidar_subscriber_;
+
+        // Uchované poslední vzdálenosti
+        float forward_{NAN}, back_{NAN}, left_{NAN}, right_{NAN};
+
+        // Mutex pro bezpečný přístup z více vláken
+        mutable std::mutex data_mutex_;
+    };
+
  }
 
 
