@@ -5,7 +5,7 @@
 #include <cmath>
 
 //#define debug
-#define PID
+//#define PID
 
 int main(int argc, char* argv[]) {
     rclcpp::init(argc, argv);
@@ -34,7 +34,7 @@ int main(int argc, char* argv[]) {
 
 #else //BANG-BANG
     const double forward_speed = 0.04; // stálá dopředná rychlost
-    const double max_turn_angle = 2.0; // maximální úhel zatáčení
+    const double max_turn_angle = 2.0; // maximální úhel zatáčení 2
 #endif
     // Čekání na stisk tlačítka 1
     io_node->turn_on_leds({100, 100, 0, 100, 100, 0, 100, 100, 0, 0, 0, 0}); // žlutá LED

@@ -105,8 +105,8 @@ namespace nodes{
     }
 
     DiscreteLinePose LineNode::estimate_descrete_line_pose(float l_norm, float r_norm) {
-        const float threshold_l = 0.08f; // Práh detekce
-        const float threshold_r = 0.08f;
+        const float threshold_l = 0.1f; // Práh detekce
+        const float threshold_r = 0.1f;
         bool left_detected = l_norm > threshold_l;
         bool right_detected = r_norm > threshold_r;
 
