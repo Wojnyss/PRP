@@ -18,6 +18,9 @@ find_package(visualization_msgs REQUIRED)
 set(SRC
         src/odometry.cpp
         src/nodes/io_node.cpp
+        src/nodes/lidar_node.cpp
+        src/nodes/imu_node.cpp
+        src/algorithms/planar_imu_integrator.cpp
         include/helper.hpp
 )
 

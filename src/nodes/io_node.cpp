@@ -126,7 +126,7 @@ namespace nodes{
         return last_continuous_line_pose;
     }
 
-    LidarNode::LidarNode() : Node("lidar_node") {
+    /*LidarNode::LidarNode() : Node("lidar_node") {
         lidar_subscriber_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
             "/scan", rclcpp::SensorDataQoS(),
             std::bind(&LidarNode::on_lidar_msg, this, std::placeholders::_1)
@@ -178,7 +178,7 @@ namespace nodes{
     float LidarNode::get_right_distance() const {
         std::lock_guard<std::mutex> lock(data_mutex_);
         return right_;
-    }
+    }*/
 
 }
 

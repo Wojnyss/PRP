@@ -88,7 +88,7 @@ namespace nodes {
         DiscreteLinePose estimate_descrete_line_pose(float l_norm, float r_norm);
     };
 
-    class LidarNode : public rclcpp::Node {
+    /*class LidarNode : public rclcpp::Node {
     public:
         LidarNode();
 
@@ -113,7 +113,7 @@ namespace nodes {
 
         // Mutex pro bezpečný přístup z více vláken
         mutable std::mutex data_mutex_;
-    };
+    };*/
 
  }
 
