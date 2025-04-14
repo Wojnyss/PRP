@@ -20,6 +20,7 @@ set(SRC
         src/nodes/io_node.cpp
         src/nodes/lidar_node.cpp
         src/nodes/imu_node.cpp
+        src/nodes/ultrasound_node.cpp
         src/algorithms/planar_imu_integrator.cpp
         include/helper.hpp
 )
