@@ -1,4 +1,4 @@
-# Install script for directory: /home/student/PRP_STREDA_MICHALKOVA/PRP/tests
+# Install script for directory: /home/teacher/PRP_STREDA_MICHALKOVA/PRP/tests
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
