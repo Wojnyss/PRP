@@ -27,6 +27,9 @@ namespace nodes {
 
          std::array<uint32_t, 2> get_encoder_values() const ;
 
+         size_t get_rgb_subscription_count() const;
+
+
      private:
          // Variable to store the last received button press value
          int button_pressed_ = -1;

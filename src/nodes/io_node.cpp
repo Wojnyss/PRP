@@ -68,6 +68,11 @@ namespace nodes{
 
     }
 
+    size_t IoNode::get_rgb_subscription_count() const {
+        return rgb_publisher_->get_subscription_count();
+    }
+
+
     LineNode::LineNode() : Node("line_node") {
     line_sensors_subscriber_ = this->create_subscription<std_msgs::msg::UInt16MultiArray>(
         "/bpc_prp_robot/line_sensors", 10,
