@@ -1,4 +1,4 @@
-# Install script for directory: /home/teacher/PRP_STREDA_MICHALKOVA/PRP/tests
+# Install script for directory: /home/student/PRP_STREDA_MICHALKOVA/PRP/tests
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -42,3 +42,9 @@ if(NOT DEFINED CMAKE_OBJDUMP)
   set(CMAKE_OBJDUMP "/usr/bin/objdump")
 endif()
 
+string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
+       "${CMAKE_INSTALL_MANIFEST_FILES}")
+if(CMAKE_INSTALL_LOCAL_ONLY)
+  file(WRITE "/home/student/PRP_STREDA_MICHALKOVA/PRP/cmake-build-debug/tests/install_local_manifest.txt"
+     "${CMAKE_INSTALL_MANIFEST_CONTENT}")
+endif()

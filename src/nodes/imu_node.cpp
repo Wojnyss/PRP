@@ -1,4 +1,5 @@
 #include "nodes/imu_node.hpp"
+#include <cmath>
 
 namespace nodes {
 
@@ -21,7 +22,14 @@ namespace nodes {
     }
 
     float ImuNode::getIntegratedResults() {
-        return planar_integrator_.getYaw();
+        float raw_yaw = planar_integrator_.getYaw();
+        return normalize_angle(raw_yaw);
+    }
+
+    float ImuNode::normalize_angle(float angle) {
+        while (angle > M_PI) angle -= 2.0f * M_PI;
+        while (angle < -M_PI) angle += 2.0f * M_PI;
+        return angle;
     }
 
     void ImuNode::reset_imu() {
@@ -39,7 +47,7 @@ namespace nodes {
 
         if (mode == ImuNodeMode::CALIBRATE) {
             gyro_calibration_samples_.push_back(gyro_z);
-            if (gyro_calibration_samples_.size() >= 100) {  // napr. po 100 vzorkoch kalibrácia
+            if (gyro_calibration_samples_.size() >= 100) {
                 calibrate();
             }
         } else if (mode == ImuNodeMode::INTEGRATE) {
