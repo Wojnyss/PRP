@@ -1,4 +1,5 @@
 #include "algorithms/aruco_detector.hpp"
+#include <iostream>
 
 namespace algorithms {
 

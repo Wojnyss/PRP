@@ -8,10 +8,11 @@ using std::placeholders::_1;
 
 class CameraNode : public rclcpp::Node {
 public:
-    CameraNode() : Node("camera_node"), detector_() {
-        image_transport::ImageTransport it(this);
-        image_sub_ = it.subscribe("/camera/image_raw", 10, std::bind(&CameraNode::imageCallback, this, _1));
-        image_pub_ = it.advertise("/camera/image_marked", 10);
+    explicit CameraNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+        : Node("camera_node", options), detector_(), it_(std::shared_ptr<rclcpp::Node>(this, [](rclcpp::Node*){}))
+    {
+        image_sub_ = it_.subscribe("/camera/image_raw", 10, std::bind(&CameraNode::imageCallback, this, _1));
+        image_pub_ = it_.advertise("/camera/image_marked", 10);
     }
 
 private:
@@ -32,6 +33,7 @@ private:
         image_pub_.publish(cv_ptr->toImageMsg());
     }
 
+    image_transport::ImageTransport it_;
     image_transport::Subscriber image_sub_;
     image_transport::Publisher image_pub_;
     algorithms::ArucoDetector detector_;
