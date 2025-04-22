@@ -37,3 +37,6 @@ namespace nodes {
     };
 
 } // namespace nodes
+
+// TODO: Hodnota chybejici steny je vetsi jak sirka bunky ale mensi jak inf, upravit podle toho program
+

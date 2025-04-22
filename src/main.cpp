@@ -4,44 +4,41 @@
 #include "nodes/imu_node.hpp"
 #include "odometry.hpp"
 #include "algorithms/pid.hpp"
-#include <cmath>
 #include <thread>
 #include <chrono>
-#include <ctime>
+#include <cmath>
 
-#define PID
+// #define LINE
+#define RING
 
-constexpr float RAD90 = M_PI_2;
-constexpr float RAD180 = M_PI;
-constexpr float FRONT_STOP_DIST = 0.24f;
-constexpr float TURN_SPEED = 10.0f;
-constexpr float FORWARD_SPEED_PID = 0.1f;
+#ifdef LINE
+constexpr float FRONT_STOP_DIST = 0.35f;
+constexpr float FORWARD_SPEED = 0.3f;
+#endif
+
+#ifdef RING
+constexpr float FRONT_STOP_DIST = 0.25f;
+constexpr float FORWARD_SPEED = 0.2f;
+#endif
+
+constexpr float MAX_TURN_ANGLE = 10.0f;
 constexpr float MIN_VALID_SIDE_DIST = 0.1f;
-constexpr float ANGLE_TOLERANCE = 0.01f;
-constexpr float WALL_MISSING_THRESHOLD = 0.35f;
+constexpr float TURN_RADIUS = 0.2f;
+constexpr float CELL_WIDTH = 0.40f;
+constexpr float ANGLE_TOLERANCE = 0.2f;
 
+float round_to_nearest_rad90(float angle_rad) {
+    int quadrant = static_cast<int>(std::round(angle_rad / M_PI_2));
+    return quadrant * M_PI_2;
+}
 
-enum class State {
-    CALIBRATION,
-    WAIT_FOR_START,
-    CORRIDOR_FOLLOWING,
+enum class RingState {
+    FOLLOW_WALL,
+    INITIATE_TURN,
     TURNING
 };
 
-std::string get_time_string() {
-    auto now = std::chrono::system_clock::now();
-    std::time_t now_time = std::chrono::system_clock::to_time_t(now);
-    char buffer[26];
-    ctime_r(&now_time, buffer);
-    buffer[24] = '\0'; // Remove trailing newline
-    return std::string(buffer);
-}
-
-float round_to_nearest_rad90(float angle_rad) {
-    int quadrant = static_cast<int>(std::round(angle_rad / RAD90));
-    return quadrant * RAD90;
-}
-
+#if defined(LINE) || defined(RING)
 int main(int argc, char* argv[]) {
     rclcpp::init(argc, argv);
 
@@ -60,154 +57,133 @@ int main(int argc, char* argv[]) {
     const float dt = 1.0f / 50.0f;
 
     Odometry odom(0.07082, 0.12539, 570, 570.7);
-#ifdef PID
-    algorithms::Pid pid(6.0f, 0.68f, 0.013f);
-    const float forward_speed = FORWARD_SPEED_PID;
-    const float max_turn_angle = 10.0f;
+    algorithms::Pid pid(10.f, 2.2f, 5.3f);
+    algorithms::Pid pid_turn(5.0f, 0.0f, 2.0f);
+
+#ifdef RING
+    RCLCPP_INFO(io_node->get_logger(), "[RING MODE] Čekám na tlačítko 2 pro kalibraci IMU...");
+    while (rclcpp::ok() && io_node->get_button_pressed() != 2) {
+        rclcpp::sleep_for(std::chrono::milliseconds(100));
+    }
+    RCLCPP_INFO(io_node->get_logger(), "[RING MODE] Kalibrace spuštěna...");
+    imu_node->setMode(nodes::ImuNodeMode::CALIBRATE);
+    rclcpp::sleep_for(std::chrono::seconds(2));
+    imu_node->setMode(nodes::ImuNodeMode::INTEGRATE);
 #endif
 
-    State state = State::CALIBRATION;
-    float yaw_start = 0.0f;
-    float target_yaw = 0.0f;
-    float turn_direction = 0.0f;
-    float planned_turn_angle = 0.0f;
+    RCLCPP_INFO(io_node->get_logger(), "[MODE] Čekám na tlačítko 1 pro start...");
+    while (rclcpp::ok() && io_node->get_button_pressed() != 1) {
+        rclcpp::sleep_for(std::chrono::milliseconds(100));
+    }
 
-    io_node->turn_on_leds({100, 100, 0, 100, 100, 0, 100, 100, 0, 0, 0, 0});
-    RCLCPP_INFO(io_node->get_logger(), "[%s] Čekám na tlačítko 2 pro kalibraci IMU...", get_time_string().c_str());
+    RCLCPP_INFO(io_node->get_logger(), "[MODE] Start...");
+
+    float turn_start_yaw = 0.0f;
+    float target_yaw = 0.0f;
+    RingState ring_state = RingState::FOLLOW_WALL;
 
     while (rclcpp::ok()) {
-        float yaw = imu_node->getIntegratedResults();
-        RCLCPP_INFO(io_node->get_logger(), "[%s] Aktuální yaw: %.1f °", get_time_string().c_str(), yaw * 180.0f / M_PI);
-        RCLCPP_INFO(io_node->get_logger(), "[%s] Stav: %s", get_time_string().c_str(),
-            (state == State::CALIBRATION ? "CALIBRATION" :
-             state == State::WAIT_FOR_START ? "WAIT_FOR_START" :
-             state == State::CORRIDOR_FOLLOWING ? "CORRIDOR_FOLLOWING" :
-             state == State::TURNING ? "TURNING" : "UNKNOWN"));
+#ifdef LINE
+        float front = lidar_node->get_forward_distance();
 
-        switch (state) {
-            case State::CALIBRATION:
-                if (io_node->get_button_pressed() == 2) {
-                    io_node->turn_on_leds({0, 100, 0, 0, 100, 0, 0, 100, 0, 0, 0, 0});
-                    RCLCPP_INFO(io_node->get_logger(), "[%s] Kalibrace IMU spuštěna...", get_time_string().c_str());
-                    imu_node->setMode(nodes::ImuNodeMode::CALIBRATE);
-                    rclcpp::sleep_for(std::chrono::seconds(2));
-                    imu_node->setMode(nodes::ImuNodeMode::INTEGRATE);
-                    RCLCPP_INFO(io_node->get_logger(), "[%s] Kalibrace dokončena. Stiskněte tlačítko 1 pro start.", get_time_string().c_str());
-                    state = State::WAIT_FOR_START;
-                }
-                if (io_node->get_button_pressed() == 0) {
-                    odom.drive(0.0, 0.0);
-                    RCLCPP_INFO(io_node->get_logger(), "[%s] Zastavení robota (tlačítko 0).", get_time_string().c_str());
-                    break;
-                }
+        std::vector<float> left_beams = lidar_node->get_average_distances_around_angle(-M_PI_2, 5);
+        std::vector<float> right_beams = lidar_node->get_average_distances_around_angle(M_PI_2, 5);
 
-                break;
+        float left = std::accumulate(left_beams.begin(), left_beams.end(), 0.0f) / std::max(1ul, left_beams.size());
+        float right = std::accumulate(right_beams.begin(), right_beams.end(), 0.0f) / std::max(1ul, right_beams.size());
 
-            case State::WAIT_FOR_START:
-                if (io_node->get_button_pressed() == 1) {
-                    RCLCPP_INFO(io_node->get_logger(), "[%s] Start...", get_time_string().c_str());
-                    state = State::CORRIDOR_FOLLOWING;
-                }
-                if (io_node->get_button_pressed() == 0) {
-                    odom.drive(0.0, 0.0);
-                    RCLCPP_INFO(io_node->get_logger(), "[%s] Zastavení robota (tlačítko 0).", get_time_string().c_str());
-                    break;
-                }
+        bool front_blocked = std::isfinite(front) && front < FRONT_STOP_DIST;
+        if (front_blocked) {
+            odom.drive(0.0f, 0.0f);
+            RCLCPP_INFO(io_node->get_logger(), "[LINE MODE] Konec koridoru detekován. Robot zastavuje.");
+            break;
+        }
 
-                break;
+        bool left_valid = std::isfinite(left) && left > MIN_VALID_SIDE_DIST;
+        bool right_valid = std::isfinite(right) && right > MIN_VALID_SIDE_DIST;
 
-            case State::CORRIDOR_FOLLOWING: {
-                float front = lidar_node->get_forward_distance();
-                float left = lidar_node->get_left_distance();
-                float right = lidar_node->get_right_distance();
+        float error = 0.0f;
+        if (left_valid && right_valid) error = left - right;
+        else if (left_valid) error = (CELL_WIDTH - left) - left;
+        else if (right_valid) error = right - (CELL_WIDTH - right);
+        else error = 0.0f;
 
-                RCLCPP_INFO(io_node->get_logger(), "[%s] Lidar vzdálenosti - Front: %.2f, Left: %.2f, Right: %.2f",
-                get_time_string().c_str(), front, left, right);
+        float correction = pid.step(error, dt);
+        correction = std::clamp(correction, -MAX_TURN_ANGLE, MAX_TURN_ANGLE);
+
+        RCLCPP_INFO(io_node->get_logger(), "[LINE MODE] Chyba: %.3f | Korekce: %.3f", error, correction);
+
+        odom.drive(FORWARD_SPEED, correction);
+#endif
+
+#ifdef RING
+        float front = lidar_node->get_forward_distance();
+        switch (ring_state) {
+            case RingState::FOLLOW_WALL: {
+                std::vector<float> left_beams = lidar_node->get_average_distances_around_angle(-M_PI_2, 5);
+                std::vector<float> right_beams = lidar_node->get_average_distances_around_angle(M_PI_2, 5);
+
+                float left = std::accumulate(left_beams.begin(), left_beams.end(), 0.0f) / std::max(1ul, left_beams.size());
+                float right = std::accumulate(right_beams.begin(), right_beams.end(), 0.0f) / std::max(1ul, right_beams.size());
+
+                RCLCPP_INFO(io_node->get_logger(), "[RING MODE] L: %.3f | P: %.3f | F: %.3f", left, right, front);
 
                 bool front_blocked = std::isfinite(front) && front < FRONT_STOP_DIST;
-                bool left_clear = std::isfinite(left) && left > WALL_MISSING_THRESHOLD;
-                bool right_clear = std::isfinite(right) && right > WALL_MISSING_THRESHOLD;
-
-                if (front_blocked && !(left_clear && right_clear)) {
-                    yaw_start = imu_node->getIntegratedResults();
-                    if (left_clear && !right_clear) {
-                        planned_turn_angle = RAD90;
-                        target_yaw = round_to_nearest_rad90(yaw_start + planned_turn_angle);
-                        turn_direction = +TURN_SPEED;
-                    } else if (right_clear && !left_clear) {
-                        planned_turn_angle = RAD90;
-                        target_yaw = round_to_nearest_rad90(yaw_start - planned_turn_angle);
-                        turn_direction = -TURN_SPEED;
-                    } else {
-                        planned_turn_angle = RAD180;
-                        target_yaw = round_to_nearest_rad90(yaw_start + planned_turn_angle);
-                        turn_direction = +TURN_SPEED;
-                    }
-                    state = State::TURNING;
-                    odom.drive(0.0, 0.0);
-                    break;
-                }
-
-                bool left_valid = std::isfinite(left) && left > MIN_VALID_SIDE_DIST;
-                bool right_valid = std::isfinite(right) && right > MIN_VALID_SIDE_DIST;
-
-                bool front_clear = !std::isfinite(front) || front >= FRONT_STOP_DIST;
-                if ((left_clear || right_clear) && front_clear) {
-                    RCLCPP_WARN(io_node->get_logger(), "[%s] Chybí boční stěny, jedu rovně bez PID.", get_time_string().c_str());
-                    odom.drive(forward_speed, 0.0f);
-                    if (io_node->get_button_pressed() == 0) {
-                        odom.drive(0.0, 0.0);
-                        RCLCPP_INFO(io_node->get_logger(), "[%s] Zastavení robota (tlačítko 0).", get_time_string().c_str());
-                        break;
-                    }
-
+                if (front_blocked) {
+                    odom.drive(0.0f, 0.0f);
+                    turn_start_yaw = imu_node->getIntegratedResults();
+                    target_yaw = round_to_nearest_rad90(turn_start_yaw + M_PI_2);
+                    ring_state = RingState::TURNING;
+                    RCLCPP_INFO(io_node->get_logger(), "[RING MODE] Zahajuji otáčení. Aktuální yaw: %.2f°", turn_start_yaw * 180.0f / M_PI);
                     break;
                 }
 
                 float error = 0.0f;
-                if (left_valid && right_valid) error = left - right;
-                else if (left_valid) error = +0.2f;
-                else if (right_valid) error = -0.2f;
-
-                float correction = pid.step(error, dt);
-                correction = std::clamp(correction, -max_turn_angle, max_turn_angle);
-                odom.drive(forward_speed, correction);
-
-                if (io_node->get_button_pressed() == 0) {
-                    odom.drive(0.0, 0.0);
-                    RCLCPP_INFO(io_node->get_logger(), "[%s] Zastavení robota (tlačítko 0).", get_time_string().c_str());
-                    break;
+                if (std::isfinite(left) && std::isfinite(right)) error = left - right;
+                else if (std::isfinite(left)) {
+                    error = (CELL_WIDTH - left) - left;
+                    RCLCPP_WARN(io_node->get_logger(), "[RING MODE] Pravá stěna nedostupná, dopočítávám chybu z levé.");
+                } else if (std::isfinite(right)) {
+                    error = right - (CELL_WIDTH - right);
+                    RCLCPP_WARN(io_node->get_logger(), "[RING MODE] Levá stěna nedostupná, dopočítávám chybu z pravé.");
+                } else {
+                    error = 0.0f;
+                    RCLCPP_WARN(io_node->get_logger(), "[RING MODE] Obě stěny nedostupné, chyba nastavena na 0.");
                 }
 
+                float correction = pid.step(error, dt);
+                correction = std::clamp(correction, -MAX_TURN_ANGLE, MAX_TURN_ANGLE);
+
+                odom.drive(FORWARD_SPEED, correction);
+                RCLCPP_INFO(io_node->get_logger(), "[RING MODE] Chyba: %.3f | Korekce: %.3f", error, correction);
                 break;
             }
 
-            case State::TURNING: {
+            case RingState::TURNING: {
                 float current_yaw = imu_node->getIntegratedResults();
-                float delta_yaw = nodes::ImuNode::normalize_angle(current_yaw - yaw_start);
                 float yaw_error = nodes::ImuNode::normalize_angle(target_yaw - current_yaw);
-                float abs_delta = std::fabs(delta_yaw);
-                RCLCPP_INFO(io_node->get_logger(), "[%s] Otáčení: cíl = %.1f ° | aktuální = %.1f ° | odchylka = %.1f °",
-                    get_time_string().c_str(), target_yaw * 180.0f / M_PI, current_yaw * 180.0f / M_PI, yaw_error * 180.0f / M_PI);
-                if (abs_delta >= planned_turn_angle - ANGLE_TOLERANCE) {
-                    RCLCPP_INFO(io_node->get_logger(), "[%s] Otáčka dokončena. Pokračuji v jízdě.", get_time_string().c_str());
-                    state = State::CORRIDOR_FOLLOWING;
-                } else {
-                    odom.drive(0.0, turn_direction);
+                float correction = pid_turn.step(yaw_error, dt);
+                correction = std::clamp(correction, -MAX_TURN_ANGLE, MAX_TURN_ANGLE);
+                odom.drive(0.0f, correction);
+
+                RCLCPP_INFO(io_node->get_logger(), "[RING MODE] Otáčení | Cíl: %.2f° | Aktuální: %.2f° | Chyba: %.2f° | Korekce: %.2f",
+                            target_yaw * 180.0f / M_PI, current_yaw * 180.0f / M_PI, yaw_error * 180.0f / M_PI, correction);
+
+                if (std::fabs(yaw_error) < ANGLE_TOLERANCE) {
+                    odom.drive(0.0f, 0.0f);
+                    ring_state = RingState::FOLLOW_WALL;
+                    RCLCPP_INFO(io_node->get_logger(), "[RING MODE] Otáčení dokončeno.");
                 }
-
-
-                if (io_node->get_button_pressed() == 0) {
-                    odom.drive(0.0, 0.0);
-                    RCLCPP_INFO(io_node->get_logger(), "[%s] Zastavení robota (tlačítko 0).", get_time_string().c_str());
-                    break;
-                }
-
                 break;
             }
         }
+#endif
 
-
+        if (io_node->get_button_pressed() == 0) {
+            odom.drive(0.0f, 0.0f);
+            RCLCPP_INFO(io_node->get_logger(), "[MODE] Zastavení robota (tlačítko 0).");
+            break;
+        }
 
         rate.sleep();
     }
@@ -216,5 +192,6 @@ int main(int argc, char* argv[]) {
     rclcpp::shutdown();
     return 0;
 }
+#endif
 
 
