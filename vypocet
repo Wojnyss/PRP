@@ -1,0 +1,22 @@
+#include <iostream>
+#include <cmath>
+
+struct Robot {
+    double x = 0, y = 0, phi = 0;
+    double R, L;
+
+    void update(double omega_r, double omega_l, double dt) {
+        double v = (R / 2) * (omega_r + omega_l);
+        double omega = (R / L) * (omega_r - omega_l);
+        x += v * cos(phi) * dt;
+        y += v * sin(phi) * dt;
+        phi += omega * dt;
+    }
+};
+
+int main() {
+    Robot bot{0.1, 0.5}; // R = 0.1 m, L = 0.5 m
+    bot.update(2.0, 1.5, 0.1); // omega_r = 2 rad/s, omega_l = 1.5 rad/s, dt = 0.1 s
+    std::cout << "x: " << bot.x << ", y: " << bot.y << ", phi: " << bot.phi << std::endl;
+    return 0;
+}
