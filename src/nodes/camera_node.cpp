@@ -1,41 +1,45 @@
-#include <rclcpp/rclcpp.hpp>
-#include <sensor_msgs/msg/image.hpp>
-#include <cv_bridge/cv_bridge.h>
-#include <image_transport/image_transport.hpp>
-#include "aruco_detector.hpp"
+#include "nodes/camera_node.hpp"
 
-using std::placeholders::_1;
+CameraNode::CameraNode() : Node("camera_node"), detector_() {}
 
-class CameraNode : public rclcpp::Node {
-public:
-    explicit CameraNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
-        : Node("camera_node", options), detector_(), it_(std::shared_ptr<rclcpp::Node>(this, [](rclcpp::Node*){}))
-    {
-        image_sub_ = it_.subscribe("/camera/image_raw", 10, std::bind(&CameraNode::imageCallback, this, _1));
-        image_pub_ = it_.advertise("/camera/image_marked", 10);
-    }
+std::shared_ptr<CameraNode> CameraNode::create() {
+    struct MakeSharedEnabler : public CameraNode {
+        MakeSharedEnabler() : CameraNode() {}
+    };
+    auto node = std::make_shared<MakeSharedEnabler>();
+    node->initTransport();
+    return node;
+}
 
-private:
-    void imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr& msg) {
-        cv_bridge::CvImagePtr cv_ptr;
-        try {
-            cv_ptr = cv_bridge::toCvCopy(msg, "bgr8");
-        } catch (cv_bridge::Exception& e) {
-            RCLCPP_ERROR(this->get_logger(), "cv_bridge exception: %s", e.what());
+void CameraNode::initTransport() {
+    image_sub_ = this->create_subscription<sensor_msgs::msg::CompressedImage>(
+        "/bpc_prp_robot/camera/compressed", 10,
+        std::bind(&CameraNode::imageCallback, this, std::placeholders::_1)
+    );
+}
+
+void CameraNode::imageCallback(const sensor_msgs::msg::CompressedImage::SharedPtr msg) {
+    try {
+        cv::Mat raw_data(msg->data);
+        last_frame_ = cv::imdecode(raw_data, cv::IMREAD_COLOR);
+
+        if (last_frame_.empty()) {
+            RCLCPP_WARN(this->get_logger(), "Received empty image frame.");
             return;
         }
 
-        auto detected = detector_.detect(cv_ptr->image);
+        auto detected = detector_.detect(last_frame_);
         last_detected_ = detected;
 
-        detector_.drawDetected(cv_ptr->image, detected);
+        // if (!detected.empty()) {
+        // std::cout << "Detected ArUco IDs: ";
+        //     for (const auto& marker : detected) {
+        //         std::cout << marker.id << " ";
+        //     }
+        //     std::cout << std::endl;
+        // }
 
-        image_pub_.publish(cv_ptr->toImageMsg());
+    } catch (const std::exception& e) {
+        RCLCPP_ERROR(this->get_logger(), "Image decode exception: %s", e.what());
     }
-
-    image_transport::ImageTransport it_;
-    image_transport::Subscriber image_sub_;
-    image_transport::Publisher image_pub_;
-    algorithms::ArucoDetector detector_;
-    std::vector<algorithms::ArucoDetector::Aruco> last_detected_;
-};
+}

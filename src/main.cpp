@@ -2,6 +2,7 @@
 #include "nodes/io_node.hpp"
 #include "nodes/lidar_node.hpp"
 #include "nodes/imu_node.hpp"
+#include "nodes/camera_node.hpp"
 #include "odometry.hpp"
 #include "algorithms/pid.hpp"
 #include <thread>
@@ -10,6 +11,8 @@
 
 // #define LINE
 #define RING
+#define EXIT
+// #define POKLAD
 
 #ifdef LINE
 constexpr float FRONT_STOP_DIST = 0.35f;
@@ -40,16 +43,31 @@ enum class RingState {
 
 #if defined(LINE) || defined(RING)
 int main(int argc, char* argv[]) {
+
     rclcpp::init(argc, argv);
+    // int aruco = 0; // 0=rovne, 1=vlevo, 2=vpravo
+    int aruco = -1;
+
+    ;
+
+    // auto executor = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
+    // executor->add_node(camera_node);
+
+    // rclcpp::Rate rate(10);
 
     auto executor = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
     auto io_node = std::make_shared<nodes::IoNode>();
     auto lidar_node = std::make_shared<nodes::LidarNode>();
     auto imu_node = std::make_shared<nodes::ImuNode>();
+    auto camera_node = CameraNode::create();
 
+    executor->add_node(camera_node);
     executor->add_node(io_node);
     executor->add_node(lidar_node);
     executor->add_node(imu_node);
+
+    RCLCPP_INFO(camera_node->get_logger(), "Camera node started. Listening for ArUco markers...");
+
 
     std::thread executor_thread([&executor]() { executor->spin(); });
 
@@ -61,7 +79,7 @@ int main(int argc, char* argv[]) {
     algorithms::Pid pid_turn(12.0f, 12.0f, 0.f);
 
 #ifdef RING
-    io_node->turn_on_leds({100, 100, 0, 100, 100, 0, 100, 100, 0, 0, 0, 0});
+    io_node->turn_on_leds({100, 100, 0, 100, 100, 0, 100, 100, 0, 0, 0, 100});
     RCLCPP_INFO(io_node->get_logger(), "[RING MODE] Čekám na tlačítko 2 pro kalibraci IMU...");
     while (rclcpp::ok() && io_node->get_button_pressed() != 2) {
         rclcpp::sleep_for(std::chrono::milliseconds(100));
@@ -73,7 +91,7 @@ int main(int argc, char* argv[]) {
     imu_node->setMode(nodes::ImuNodeMode::INTEGRATE);
 #endif
 
-    io_node->turn_on_leds({0, 100, 0, 0, 100, 0, 0, 100, 0, 0, 0, 0});
+    io_node->turn_on_leds({100, 100, 0, 100, 100, 0, 100, 100, 0, 100, 100, 0});
     RCLCPP_INFO(io_node->get_logger(), "[MODE] Čekám na tlačítko 1 pro start...");
     while (rclcpp::ok() && io_node->get_button_pressed() != 1) {
         rclcpp::sleep_for(std::chrono::milliseconds(100));
@@ -97,6 +115,8 @@ int main(int argc, char* argv[]) {
         float left = std::accumulate(left_beams.begin(), left_beams.end(), 0.0f) / std::max(1ul, left_beams.size());
         float right = std::accumulate(right_beams.begin(), right_beams.end(), 0.0f) / std::max(1ul, right_beams.size());
 
+
+
         switch (ring_state) {
             case RingState::FOLLOW_WALL: {
                 float virtual_left = left;
@@ -114,36 +134,54 @@ int main(int argc, char* argv[]) {
                 correction = std::clamp(correction, -MAX_TURN_ANGLE, MAX_TURN_ANGLE);
                 odom.drive(FORWARD_SPEED, correction);
 
-                if (std::isfinite(front) && front < FRONT_STOP_DIST) {
+                bool left_free = std::isfinite(left) && left > CELL_WIDTH;
+                bool right_free = std::isfinite(right) && right > CELL_WIDTH;
+                bool front_free = std::isfinite(front) && front > FRONT_STOP_DIST;
+
+                const auto& detected = camera_node->get_last_detected();
+                if (!detected.empty())
+                {
+                    int id = detected[0].id;
+                    // RCLCPP_INFO(camera_node->get_logger(), "[ARUCO] Detekováno ID: %d", id);
+#ifdef EXIT
+                    if (id == 0) aruco = 0;
+                    else if (id == 1) aruco = 1;
+                    else if (id == 2) aruco = 2;
+#endif
+#ifdef POKLAD
+                    if (id == 10) aruco = 0;
+                    else if (id == 11) aruco = 1;
+                    else if (id == 12) aruco = 2;
+#endif
+                    // RCLCPP_INFO(camera_node->get_logger(), "[ARUCO] Uloženo jako aruco = %d", aruco);
+                }
+
+                if (!front_free || left_free || right_free) {
                     odom.drive(0.0f, 0.0f);
                     ring_state = RingState::INITIATE_TURN;
                 }
+
+                io_node->turn_on_leds({0, 0, 0, 0, 100, 0, 0, 100, 0, 0, 100, 0});
                 break;
             }
             case RingState::INITIATE_TURN: {
                 turn_start_yaw = imu_node->getIntegratedResults();
                 float direction = 0.0f;
-                bool left_free = std::isfinite(left) && left > CELL_WIDTH;
-                bool right_free = std::isfinite(right) && right > CELL_WIDTH;
-                bool front_free = std::isfinite(front) && front > FRONT_STOP_DIST;
-
-                if (left_free && right_free && front_free) {
-                    ring_state = RingState::FOLLOW_WALL;  // + křižovatka: pokračuj rovně
-                    break;
-                } else if (left_free && !right_free && !front_free){ //doleva
-
+                if (aruco == 1) {
                     direction = 1.0f;
-                } else if (!left_free && right_free && !front_free){ // doprava
+                    ring_state = RingState::TURNING;
+                    io_node->turn_on_leds({100, 100, 0, 100, 0, 0, 0, 100, 0, 0, 100, 0});
+                } else if (aruco == 2) {
                     direction = -1.0f;
-                } else{ // T kriz
-                    direction = 1.0f; // defaultně doleva
+                    ring_state = RingState::TURNING;
+                    io_node->turn_on_leds({0, 100, 0, 0, 0, 100, 100, 100, 0, 0, 100, 0});
+                } else if (aruco == 0) {
+                    direction = 0.0f;
+                    ring_state = RingState::FOLLOW_WALL;
+                } else {
+                    ring_state = RingState::FOLLOW_WALL;
                 }
-
-                float unaligned_target = nodes::ImuNode::normalize_angle(turn_start_yaw + direction * M_PI_2);
-                target_yaw = round_to_nearest_rad90(unaligned_target);
-                ring_state = RingState::TURNING;
-                io_node->turn_on_leds({0, 0, 100, 0, 0, 100, 0, 0, 100, 0, 0, 100});
-                RCLCPP_INFO(io_node->get_logger(), "[TURN] Target yaw: %.2f°", target_yaw * 180.0f / M_PI);
+                target_yaw = round_to_nearest_rad90(nodes::ImuNode::normalize_angle(turn_start_yaw + direction * M_PI_2));
                 break;
             }
             case RingState::TURNING: {
@@ -158,8 +196,12 @@ int main(int argc, char* argv[]) {
 
                 if (std::fabs(yaw_error) < ANGLE_TOLERANCE) {
                     odom.drive(0.0f, 0.0f);
+                    io_node->turn_on_leds({100, 100, 0, 0, 0, 100, 100, 100, 0, 0, 0, 100});
+                    RCLCPP_INFO(io_node->get_logger(), "[TURN] Otocka dokoncena. Spoustim rekalibraci...");
+                    imu_node->setMode(nodes::ImuNodeMode::CALIBRATE);
+                    rclcpp::sleep_for(std::chrono::seconds(1));
+                    imu_node->setMode(nodes::ImuNodeMode::INTEGRATE);
                     ring_state = RingState::FOLLOW_WALL;
-                    RCLCPP_INFO(io_node->get_logger(), "[TURN] Otocka dokoncena.");
                     rclcpp::sleep_for(std::chrono::seconds(1));
                 }
                 break;
@@ -168,7 +210,7 @@ int main(int argc, char* argv[]) {
 
         if (stop_requested) {
             odom.drive(0.0f, 0.0f);
-            io_node->turn_on_leds({100, 0, 0, 100, 0, 0, 100, 0, 0, 0, 0, 0});
+            io_node->turn_on_leds({100, 0, 0, 100, 0, 0, 100, 0, 0, 100, 0, 0});
             RCLCPP_INFO(io_node->get_logger(), "[MODE] Zastaveni robota (tlacitko 0).\n");
             break;
         }
@@ -181,4 +223,40 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 #endif
- //Test
+
+
+// int main(int argc, char* argv[]) {
+//     rclcpp::init(argc, argv);
+//     auto camera_node = CameraNode::create();
+//
+//     int aruco = -1;
+//
+//     RCLCPP_INFO(camera_node->get_logger(), "Camera node started. Listening for ArUco markers...");
+//
+//     rclcpp::Rate rate(10);
+//     while (rclcpp::ok()) {
+//         rclcpp::spin_some(camera_node);
+//
+//         const auto& detected = camera_node->get_last_detected();
+//         if (!detected.empty()) {
+//             int id = detected[0].id;
+//             RCLCPP_INFO(camera_node->get_logger(), "[ARUCO] Detekováno ID: %d", id);
+// #ifdef EXIT
+//             if (id == 0) aruco = 0;
+//             else if (id == 1) aruco = 1;
+//             else if (id == 2) aruco = 2;
+// #endif
+// #ifdef POKLAD
+//             if (id == 10) aruco = 0;
+//             else if (id == 11) aruco = 1;
+//             else if (id == 12) aruco = 2;
+// #endif
+//             RCLCPP_INFO(camera_node->get_logger(), "[ARUCO] Uloženo jako aruco = %d", aruco);
+//         }
+//
+//         rate.sleep();
+//     }
+//
+//     rclcpp::shutdown();
+//     return 0;
+// }

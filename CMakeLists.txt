@@ -23,7 +23,6 @@ set(SRC
         src/nodes/lidar_node.cpp
         src/algorithms/planar_imu_integrator.cpp
         src/nodes/camera_node.cpp
-        src/algorithms/aruco_detector.cpp
         include/helper.hpp
 )
 
