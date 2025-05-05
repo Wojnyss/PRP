@@ -25,14 +25,14 @@ namespace algorithms {
 
             cv::aruco::detectMarkers(frame, dictionary_, marker_corners, marker_ids);
 
-            // if (!marker_ids.empty()) {
-            //     std::cout << "Arucos found: ";
-            //     for (size_t i = 0; i < marker_ids.size(); i++) {
-            //         std::cout << marker_ids[i] << " ";
-            //         arucos.emplace_back(Aruco{marker_ids[i], marker_corners[i]});
-            //     }
-            //     std::cout << std::endl;
-            // }
+            if (!marker_ids.empty()) {
+                std::cout << "Arucos found: ";
+                for (size_t i = 0; i < marker_ids.size(); i++) {
+                    std::cout << marker_ids[i] << " ";
+                    arucos.emplace_back(Aruco{marker_ids[i], marker_corners[i]});
+                }
+                std::cout << std::endl;
+            }
 
             return arucos;
         }

@@ -11,8 +11,9 @@
 
 // #define LINE
 #define RING
-#define EXIT
-// #define POKLAD
+// #define EXIT
+#define POKLAD
+// #define RECALIBRATION
 
 #ifdef LINE
 constexpr float FRONT_STOP_DIST = 0.35f;
@@ -20,16 +21,16 @@ constexpr float FORWARD_SPEED = 0.3f;
 #endif
 
 #ifdef RING
-constexpr float FRONT_STOP_DIST = 0.25f;
+constexpr float FRONT_STOP_DIST = 0.28f;
 constexpr float FORWARD_SPEED = 0.20f;
 constexpr float MIN_VALID_CENTER_DIST = 0.05f;
 #endif
 
 constexpr float MAX_TURN_ANGLE = 10.0f;
-constexpr float MIN_VALID_SIDE_DIST = 0.1f;
+constexpr float MIN_VALID_SIDE_DIST = 0.05f;
 constexpr float TURN_RADIUS = 0.2f;
 constexpr float CELL_WIDTH = 0.40f;
-constexpr float ANGLE_TOLERANCE = 0.2f;
+constexpr float ANGLE_TOLERANCE = 0.15f;
 
 float round_to_nearest_rad90(float angle_rad) {
     int quadrant = static_cast<int>(std::round(angle_rad / M_PI_2));
@@ -49,7 +50,10 @@ int main(int argc, char* argv[]) {
     rclcpp::init(argc, argv);
     // int aruco = 0; // 0=rovne, 1=vlevo, 2=vpravo
     int aruco = -1;
+    int aruco_new = -1;
     int turn = 0;
+    bool turn_lock = false;
+    float front_in_turn = 0.f;
 
     ;
 
@@ -107,6 +111,7 @@ int main(int argc, char* argv[]) {
     RingState ring_state = RingState::FOLLOW_WALL;
 
     bool stop_requested = false;
+    bool autostop = false;
 
     while (rclcpp::ok()) {
         float front = lidar_node->get_forward_distance();
@@ -141,60 +146,83 @@ int main(int argc, char* argv[]) {
 
                 bool left_free = std::isfinite(left) && left > CELL_WIDTH;
                 bool right_free = std::isfinite(right) && right > CELL_WIDTH;
-                bool front_free = std::isfinite(front) && front > FRONT_STOP_DIST;
-                bool back_free = std::isfinite(back) && back > FRONT_STOP_DIST;
+                bool front_free = std::isfinite(front) && front > CELL_WIDTH;
+                bool back_free = std::isfinite(back) && back > CELL_WIDTH;
 
                 const auto& detected = camera_node->get_last_detected();
                 if (!detected.empty())
                 {
                     int id = detected[0].id;
                     RCLCPP_INFO(camera_node->get_logger(), "[ARUCO] Detekováno ID: %d", id);
-#ifdef EXIT.
+#ifdef EXIT
                     if (id == 0) aruco = 0;
                     else if (id == 1) aruco = 1;
                     else if (id == 2) aruco = 2;
+                    aruco = id / 10;
 #endif
 #ifdef POKLAD
-                    if (id == 10) aruco = 0;
-                    else if (id == 11) aruco = 1;
-                    else if (id == 12) aruco = 2;
+                    // if (id == 10) aruco = 0;
+                    // else if (id == 11) aruco = 1;
+                    // else if (id == 12) aruco = 2;
+                    aruco = id % 10;
 #endif
-                    // RCLCPP_INFO(camera_node->get_logger(), "[ARUCO] Uloženo jako aruco = %d", aruco);
+                    RCLCPP_INFO(camera_node->get_logger(), "[ARUCO] Uloženo jako aruco = %d", aruco);
                 }
+
+                    // if (front <= front_in_turn-CELL_WIDTH/2)
+                    //     aruco = aruco_new;
 
                 //DETEKCE KRIZOVATEK
                     float pos_in_cell = fmod(front, CELL_WIDTH); // pozice v rámci jedné buňky
                     bool centered = fabs(pos_in_cell - CELL_WIDTH/2) <= MIN_VALID_CENTER_DIST;
                     int num_of_exits = (front_free + left_free + right_free + back_free);
 
-                if (centered)
-                    std::cout << "ARUCO_VAL: "<< aruco << std::endl;
+                // if (centered)
+                    std::cout << "ARUCO_VAL: "<< aruco << ", EXITS: " << num_of_exits << std::endl;
+
+                if (front < FRONT_STOP_DIST)
+                    odom.drive(0.0f, 0.0f);
 
                 if (centered && num_of_exits == 2 && !front_free)//zatacka L R
                 {
-                    odom.drive(0.0f, 0.0f);
+                    // odom.drive(0.0f, 0.0f);
+                    std::cout << "TURN"<<  std::endl;
+                    std::cout << "F: " << front_free << "B: " << back_free << "R: " << right_free << "L: " << left_free <<  std::endl;
                     if (right_free)
                         turn = 1;
                     else if (left_free)
                         turn = -1;
                     ring_state = RingState::INITIATE_TURN;
                 }
-                else if (centered && num_of_exits == 1 && !front_free)
+                else if (centered && num_of_exits == 1 && !front_free) //slepa ulicka
                 {
                     odom.drive(0.0f, 0.0f);
+                    std::cout << "TURN 180"<< std::endl;
                     turn = 2;
                     ring_state = RingState::INITIATE_TURN;
                 }
-                else if (centered && num_of_exits == 3 && aruco != 0) //T
+                else if (centered && num_of_exits == 3 && aruco != 0 ) //T
                 {
                     odom.drive(0.0f, 0.0f);
+                    std::cout << "T INTERSECTION"<< std::endl;
+                    turn = 0;
                     ring_state = RingState::INITIATE_INTERSECTION;
                 }
                 else if (centered && num_of_exits == 4 && aruco != 0) //+
                 {
                     odom.drive(0.0f, 0.0f);
+                    std::cout << "+ INTERSECTION"<< std::endl;
+                    turn = 0;
                     ring_state = RingState::INITIATE_INTERSECTION;
                 }
+                else if (centered && num_of_exits == 3 && aruco == 0 && !front_free) //T do zdi
+                {
+                    odom.drive(0.0f, 0.0f);
+                    stop_requested = true;
+                    RCLCPP_INFO(io_node->get_logger(), "[MODE] CRITICAL ERROR: WALL AHEAD (AUTOSTOP).\n");
+                    autostop = true;
+                }
+
 
                 io_node->turn_on_leds({0, 0, 0, 0, 100, 0, 0, 100, 0, 0, 100, 0});
                 break;
@@ -244,6 +272,10 @@ int main(int argc, char* argv[]) {
             }
             case RingState::TURNING: {
                 std::cout <<  "STATE: TURNING" << std::endl;
+
+                    if (target_yaw == -M_PI)
+                        target_yaw = M_PI;
+
                 float current_yaw = imu_node->getIntegratedResults();
                 float yaw_error = nodes::ImuNode::normalize_angle(target_yaw - current_yaw);
                 float correction = pid_turn.step(yaw_error, dt);
@@ -257,9 +289,15 @@ int main(int argc, char* argv[]) {
                     odom.drive(0.0f, 0.0f);
                     // io_node->turn_on_leds({100, 100, 0, 0, 0, 100, 100, 100, 0, 0, 0, 100});
                     RCLCPP_INFO(io_node->get_logger(), "[TURN] Otocka dokoncena. Spoustim rekalibraci...");
-                    // imu_node->setMode(nodes::ImuNodeMode::CALIBRATE);
-                    // rclcpp::sleep_for(std::chrono::seconds(1));
-                    // imu_node->setMode(nodes::ImuNodeMode::INTEGRATE);
+                    if (turn == 0)
+                        aruco = 0;
+                    // front_in_turn = front;
+                    //turn_lock = true;
+#ifdef RECALIBRATION
+                    imu_node->setMode(nodes::ImuNodeMode::CALIBRATE);
+                    rclcpp::sleep_for(std::chrono::seconds(1));
+                    imu_node->setMode(nodes::ImuNodeMode::INTEGRATE);
+#endif
                     ring_state = RingState::FOLLOW_WALL;
                     rclcpp::sleep_for(std::chrono::seconds(1));
                 }
@@ -270,7 +308,8 @@ int main(int argc, char* argv[]) {
         if (stop_requested) {
             odom.drive(0.0f, 0.0f);
             io_node->turn_on_leds({100, 0, 0, 100, 0, 0, 100, 0, 0, 100, 0, 0});
-            RCLCPP_INFO(io_node->get_logger(), "[MODE] Zastaveni robota (tlacitko 0).\n");
+            if (!autostop)
+                RCLCPP_INFO(io_node->get_logger(), "[MODE] Zastaveni robota (tlacitko 0).\n");
             break;
         }
 

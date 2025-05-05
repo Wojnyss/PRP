@@ -31,13 +31,14 @@ void CameraNode::imageCallback(const sensor_msgs::msg::CompressedImage::SharedPt
         auto detected = detector_.detect(last_frame_);
         last_detected_ = detected;
 
-        // if (!detected.empty()) {
-        // std::cout << "Detected ArUco IDs: ";
-        //     for (const auto& marker : detected) {
-        //         std::cout << marker.id << " ";
-        //     }
-        //     std::cout << std::endl;
-        // }
+        if (!detected.empty()) {
+        std::cout << "Detected ArUco IDs: ";
+            for (const auto& marker : detected) {
+                std::cout << marker.id << " ";
+            }
+            std::cout << std::endl;
+        }
+
 
     } catch (const std::exception& e) {
         RCLCPP_ERROR(this->get_logger(), "Image decode exception: %s", e.what());
