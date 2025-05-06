@@ -68,4 +68,45 @@ void Odometry::drive(double forward_speed, double turn_rate_deg) {
     io_node_->set_motor_speeds({left_motor, right_motor});
 }
 
+// void Odometry::drive(double forward_speed, double turn_rate_deg) {
+//     double turn_clamped = std::clamp(turn_rate_deg, -90.0, 90.0);
+//     double forward_clamped = std::clamp(forward_speed, -1.0, 1.0);
+//
+//     // Korekce rychlosti na základě počtu pulsů
+//     double left_correction = static_cast<double>(pulses_per_rev_r_) / pulses_per_rev_l_;
+//     double right_correction = static_cast<double>(pulses_per_rev_l_) / pulses_per_rev_r_;
+//
+//     // Výpočet normalizovaných rychlostí pro levý a pravý motor
+//     double turn_norm = turn_clamped / 90.0;  // ∈ [-1.0, 1.0]
+//     double left_speed = forward_clamped - turn_norm;
+//     double right_speed = forward_clamped + turn_norm;
+//
+//     // Omezit rozsah na [-1.0, 1.0]
+//     left_speed = std::clamp(left_speed, -1.0, 1.0);
+//     right_speed = std::clamp(right_speed, -1.0, 1.0);
+//
+//     // Funkce pro převod rychlosti na PWM (127 = stop, <127 = reverz, >127 = dopředu)
+//     auto speed_to_pwm = [](double speed) -> uint8_t {
+//         if (std::abs(speed) < 0.01) return 127;  // klid
+//
+//         // Minimální účinná PWM složka (např. 30)
+//         const double min_effective_pwm = 30.0;
+//
+//         // Rychlost ∈ [-1, 1] → rozsah PWM ∈ [0, 255]
+//         double pwm = 127.0 + speed * (128.0 - min_effective_pwm);
+//
+//         // Přidání nebo ubrání minimálního kroku (mimo klidovou oblast)
+//         if (speed > 0)
+//             pwm = std::max(pwm, 127.0 + min_effective_pwm);
+//         else
+//             pwm = std::min(pwm, 127.0 - min_effective_pwm);
+//
+//         return static_cast<uint8_t>(std::clamp(pwm, 0.0, 255.0));
+//     };
+//
+//     uint8_t left_motor = speed_to_pwm(left_speed * left_correction);
+//     uint8_t right_motor = speed_to_pwm(right_speed * right_correction);
+//
+//     io_node_->set_motor_speeds({left_motor, right_motor});
+// }
 

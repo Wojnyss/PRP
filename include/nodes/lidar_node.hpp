@@ -16,7 +16,8 @@ namespace nodes {
         float get_right_distance() const;
         float get_diagonal_left_distance() const;
         float get_diagonal_right_distance() const;
-        std::vector<float>get_average_distances_around_angle(float center_angle, int num_beams_each_side);
+        // std::vector<float>get_average_distances_around_angle(float center_angle, int num_beams_each_side);
+        float get_average_range_at_angle(float angle_rad, int num_beams_each_side);
 
     private:
         void on_lidar_msg(const sensor_msgs::msg::LaserScan::SharedPtr msg);
