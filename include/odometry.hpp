@@ -21,6 +21,8 @@ public:
     void update(int pulses_left, int pulses_right);
     Pose getPose() const;
     void resetPose();
+    void setIoNode(const std::shared_ptr<nodes::IoNode>& node);
+
 
     // Rychlost ve směru vpřed (0.0–1.0), zatáčení ve stupních (-90 až +90)
     void drive(double forward_speed, double turn_rate_deg);

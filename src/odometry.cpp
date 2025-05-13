@@ -1,5 +1,9 @@
 #include "odometry.hpp"
 
+// #define NEW_DRIVE
+#define OLD_DRIVE
+
+
 Odometry::Odometry(double wheel_diameter, double wheel_base, int pulses_per_rev_l_, int pulses_per_rev_r_)
     : wheel_diameter_(wheel_diameter),
       wheel_base_(wheel_base),
@@ -41,6 +45,63 @@ void Odometry::resetPose() {
     current_pose_ = {0.0, 0.0, 0.0};
 }
 
+uint8_t last_left_motor_ = 127;
+uint8_t last_right_motor_ = 127;
+constexpr double TURN_SCALE = 0.9; // sníží dopad otočky
+
+
+#ifdef NEW_DRIVE
+void Odometry::drive(double forward_speed, double turn_rate_deg) {
+    double turn_clamped = std::clamp(turn_rate_deg, -90.0, 90.0);
+    double forward_clamped = std::clamp(forward_speed, -1.0, 1.0);
+
+    double left_correction = static_cast<double>(pulses_per_rev_r_) / pulses_per_rev_l_;
+    double right_correction = static_cast<double>(pulses_per_rev_l_) / pulses_per_rev_r_;
+
+    double turn_norm = (turn_clamped / 90.0) * TURN_SCALE;
+    double left_speed = std::clamp(forward_clamped - turn_norm, -1.0, 1.0);
+    double right_speed = std::clamp(forward_clamped + turn_norm, -1.0, 1.0);
+
+    auto speed_to_pwm = [](double speed) -> uint8_t {
+        if (std::abs(speed) < 0.01) return 127;
+
+        const double min_effective_pwm = 30.0;
+        double pwm = 127.0 + speed * (128.0 - min_effective_pwm);
+
+        if (speed > 0)
+            pwm = std::max(pwm, 127.0 + min_effective_pwm);
+        else
+            pwm = std::min(pwm, 127.0 - min_effective_pwm);
+
+        return static_cast<uint8_t>(std::clamp(pwm, 0.0, 255.0));
+    };
+
+    uint8_t left_motor = speed_to_pwm(left_speed * left_correction);
+    uint8_t right_motor = speed_to_pwm(right_speed * right_correction);
+
+    // 🛑 DEAD-TIME OCHRANA: pokud změna směru → zastav krátce oba motory
+    auto sign = [](uint8_t pwm) -> int {
+        if (pwm > 127) return 1;
+        if (pwm < 127) return -1;
+        return 0;
+    };
+
+    bool left_reversed = sign(left_motor) != sign(last_left_motor_) && sign(left_motor) != 0;
+    bool right_reversed = sign(right_motor) != sign(last_right_motor_) && sign(right_motor) != 0;
+
+    if (left_reversed || right_reversed) {
+        io_node_->set_motor_speeds({127, 127}); // stop
+        std::this_thread::sleep_for(std::chrono::milliseconds(20)); // dead-time delay
+    }
+
+    io_node_->set_motor_speeds({left_motor, right_motor});
+
+    last_left_motor_ = left_motor;
+    last_right_motor_ = right_motor;
+}
+#endif
+
+#ifdef OLD_DRIVE
 void Odometry::drive(double forward_speed, double turn_rate_deg) {
     double turn_clamped = std::clamp(turn_rate_deg, -90.0, 90.0);
     double forward_clamped = std::clamp(forward_speed, -1.0, 1.0);
@@ -63,50 +124,13 @@ void Odometry::drive(double forward_speed, double turn_rate_deg) {
     uint8_t left_motor = static_cast<uint8_t>(std::clamp(left_pwm, static_cast<int16_t>(0), static_cast<int16_t>(255)));
     uint8_t right_motor = static_cast<uint8_t>(std::clamp(right_pwm, static_cast<int16_t>(0), static_cast<int16_t>(255)));
 
-   // RCLCPP_INFO(io_node_->get_logger(), "PWM OUT: L=%d R=%d | L_corr=%.2f R_corr=%.2f", left_motor, right_motor, left_correction, right_correction);
+    // RCLCPP_INFO(io_node_->get_logger(), "PWM OUT: L=%d R=%d | L_corr=%.2f R_corr=%.2f", left_motor, right_motor, left_correction, right_correction);
 
     io_node_->set_motor_speeds({left_motor, right_motor});
 }
+#endif
 
-// void Odometry::drive(double forward_speed, double turn_rate_deg) {
-//     double turn_clamped = std::clamp(turn_rate_deg, -90.0, 90.0);
-//     double forward_clamped = std::clamp(forward_speed, -1.0, 1.0);
-//
-//     // Korekce rychlosti na základě počtu pulsů
-//     double left_correction = static_cast<double>(pulses_per_rev_r_) / pulses_per_rev_l_;
-//     double right_correction = static_cast<double>(pulses_per_rev_l_) / pulses_per_rev_r_;
-//
-//     // Výpočet normalizovaných rychlostí pro levý a pravý motor
-//     double turn_norm = turn_clamped / 90.0;  // ∈ [-1.0, 1.0]
-//     double left_speed = forward_clamped - turn_norm;
-//     double right_speed = forward_clamped + turn_norm;
-//
-//     // Omezit rozsah na [-1.0, 1.0]
-//     left_speed = std::clamp(left_speed, -1.0, 1.0);
-//     right_speed = std::clamp(right_speed, -1.0, 1.0);
-//
-//     // Funkce pro převod rychlosti na PWM (127 = stop, <127 = reverz, >127 = dopředu)
-//     auto speed_to_pwm = [](double speed) -> uint8_t {
-//         if (std::abs(speed) < 0.01) return 127;  // klid
-//
-//         // Minimální účinná PWM složka (např. 30)
-//         const double min_effective_pwm = 30.0;
-//
-//         // Rychlost ∈ [-1, 1] → rozsah PWM ∈ [0, 255]
-//         double pwm = 127.0 + speed * (128.0 - min_effective_pwm);
-//
-//         // Přidání nebo ubrání minimálního kroku (mimo klidovou oblast)
-//         if (speed > 0)
-//             pwm = std::max(pwm, 127.0 + min_effective_pwm);
-//         else
-//             pwm = std::min(pwm, 127.0 - min_effective_pwm);
-//
-//         return static_cast<uint8_t>(std::clamp(pwm, 0.0, 255.0));
-//     };
-//
-//     uint8_t left_motor = speed_to_pwm(left_speed * left_correction);
-//     uint8_t right_motor = speed_to_pwm(right_speed * right_correction);
-//
-//     io_node_->set_motor_speeds({left_motor, right_motor});
-// }
 
+void Odometry::setIoNode(const std::shared_ptr<nodes::IoNode>& node) {
+    io_node_ = node;
+}
