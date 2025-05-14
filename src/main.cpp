@@ -16,12 +16,12 @@
 #define RING //MAIN PROGRAM PRO MAZE ESCAPE //prepis direktivu na OLD_DRIVE V odometry.cpp
 
 //------------------Type of escape---------------------
-// #define EXIT
-#define POKLAD
+#define EXIT
+// #define POKLAD
 
 //-----------------Choose robot-----------------------
-// #define ORANGE
-#define BLUE
+#define ORANGE
+// #define BLUE
 
 
 // #define RECALIBRATION
@@ -34,7 +34,7 @@ constexpr float FORWARD_SPEED = 0.3f;
 
 #ifdef RING
 constexpr float FRONT_STOP_DIST = 0.27f;
-constexpr float FORWARD_SPEED = 0.20f;
+constexpr float FORWARD_SPEED = 0.20f; //0.20f
 #endif
 
 constexpr float MIN_VALID_CENTER_DIST = 0.05f;
@@ -45,8 +45,8 @@ constexpr float CELL_WIDTH = 0.40f;
 constexpr float MAX_TURN_ANGLE_ROT = 10.0f;
 constexpr float ANGLE_TOLERANCE = 0.15f;
 
-algorithms::Pid pid_turnR(14.0f, 15.6f, 0.0f);
-algorithms::Pid pid_turnL(15.0f, 15.0f, 0.0f);
+algorithms::Pid pid_turnR(5.0f, 7.0f, 1.3f);
+algorithms::Pid pid_turnL(5.0f, 7.0f, 1.50f); //(5.0f, 7.0f, 0.0f);
 algorithms::Pid pid(12.f, 5.3f, 9.8f);
 #endif
 
@@ -92,6 +92,7 @@ int main(int argc, char* argv[]) {
 
     rclcpp::init(argc, argv);
     int aruco = -1;
+    int tmp_aruco = -1;
     int turn = 0;
 
     auto executor = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
@@ -148,6 +149,7 @@ int main(int argc, char* argv[]) {
 
     bool stop_requested = false;
     bool autostop = false;
+    bool in_intersection = false;
 
     while (rclcpp::ok()) {
         float front = lidar_node->get_forward_distance();
@@ -202,11 +204,18 @@ int main(int argc, char* argv[]) {
                             }
 #endif
 #ifdef POKLAD
-                            if (id >= 10)
-                            {
-                                aruco = id % 10;
-                                RCLCPP_INFO(camera_node->get_logger(), "[ARUCO][POKLAD] Detekováno ID: %d, uloženo jako aruco = %d", id, aruco);
+                            if (id >= 10){
+                                if (in_intersection == true){
+                                tmp_aruco = id % 10;
+                                RCLCPP_INFO(camera_node->get_logger(), "[ARUCO][POKLAD] Detekováno ID: %d, uloženo jako tmp_aruco = %d", id, tmp_aruco);
                                 break;
+                                }
+                                else
+                                {
+                                    aruco = id % 10;
+                                    RCLCPP_INFO(camera_node->get_logger(), "[ARUCO][POKLAD] Detekováno ID: %d, uloženo jako aruco = %d", id, aruco);
+                                    break;
+                                }
                             }
 #endif
                         }
@@ -218,7 +227,7 @@ int main(int argc, char* argv[]) {
                     int num_of_exits = (front_free + left_free + right_free + back_free);
 
                 // if (centered)
-                    std::cout << "ARUCO_VAL: "<< aruco << ", EXITS: " << num_of_exits << std::endl;
+                    std::cout << "ARUCO_VAL: "<< aruco << "TMP_VAL: "<< tmp_aruco << ", EXITS: " << num_of_exits << std::endl;
                     // std::cout << "F: " << front_free << "B: " << back_free << "R: " << right_free << "L: " << left_free <<  std::endl;
                     // std::cout << "F: " << front << "B: " << back << "R: " << right << "L: " << left <<  std::endl;
 
@@ -229,6 +238,7 @@ int main(int argc, char* argv[]) {
                 {
                     std::cout << "TURN"<<  std::endl;
                     std::cout << "F: " << front_free << "B: " << back_free << "R: " << right_free << "L: " << left_free <<  std::endl;
+                    in_intersection = false;
                     if (right_free)
                         turn = 1;
                     else if (left_free)
@@ -239,6 +249,8 @@ int main(int argc, char* argv[]) {
                 {
                     odom.drive(0.0f, 0.0f);
                     std::cout << "TURN 180"<< std::endl;
+                    in_intersection = false;
+                    aruco = tmp_aruco;
                     turn = 2;
                     ring_state = RingState::INITIATE_TURN;
                 }
@@ -246,13 +258,20 @@ int main(int argc, char* argv[]) {
                 {
                     odom.drive(0.0f, 0.0f);
                     std::cout << "T INTERSECTION"<< std::endl;
+                    in_intersection = true;
                     turn = 0;
                     ring_state = RingState::INITIATE_INTERSECTION;
+                }
+                else if (centered && num_of_exits == 3 && aruco == 0 ) //T rovne
+                {
+                    std::cout << "T INTERSECTION through"<< std::endl;
+                    in_intersection = true;
                 }
                 else if (centered && num_of_exits == 4 && aruco != 0) //+
                 {
                     odom.drive(0.0f, 0.0f);
                     std::cout << "+ INTERSECTION"<< std::endl;
+                    in_intersection = true;
                     turn = 0;
                     ring_state = RingState::INITIATE_INTERSECTION;
                 }
@@ -263,7 +282,8 @@ int main(int argc, char* argv[]) {
                     RCLCPP_INFO(io_node->get_logger(), "[MODE] CRITICAL ERROR: WALL AHEAD (AUTOSTOP).\n");
                     autostop = true;
                 }
-
+                else
+                    in_intersection = false;
 
                 io_node->turn_on_leds({0, 0, 0, 0, 100, 0, 0, 100, 0, 0, 100, 0});
                 break;
@@ -332,13 +352,15 @@ int main(int argc, char* argv[]) {
                     RCLCPP_INFO(io_node->get_logger(), "[TURN] Otocka dokoncena. Spoustim rekalibraci...");
                     if (turn == 0)
                         aruco = 0;
+                    // if (in_intersection == true)
+
 #ifdef RECALIBRATION
                     imu_node->setMode(nodes::ImuNodeMode::CALIBRATE);
                     rclcpp::sleep_for(std::chrono::seconds(1));
                     imu_node->setMode(nodes::ImuNodeMode::INTEGRATE);
 #endif
                     ring_state = RingState::FOLLOW_WALL;
-                    rclcpp::sleep_for(std::chrono::seconds(1));
+                   rclcpp::sleep_for(std::chrono::milliseconds(200));
                 }
                 break;
             }
@@ -421,7 +443,7 @@ int main(int argc, char* argv[]) {
     const float dt = 1.0f / 50.0f;
 
 #ifdef ORANGE
-    Odometry odom(0.07082, 0.12539, 570, 570.7);
+    Odometry odom(0.07082, 0.12539, 570, 570);
 #endif
 #ifdef BLUE
     Odometry odom(0.06684, 0.12889, 584, 584);
