@@ -16,8 +16,8 @@
 #define RING //MAIN PROGRAM PRO MAZE ESCAPE //prepis direktivu na OLD_DRIVE V odometry.cpp
 
 //------------------Type of escape---------------------
-#define EXIT
-// #define POKLAD
+// #define EXIT
+#define POKLAD
 
 //-----------------Choose robot-----------------------
 #define ORANGE
@@ -360,7 +360,7 @@ int main(int argc, char* argv[]) {
                     imu_node->setMode(nodes::ImuNodeMode::INTEGRATE);
 #endif
                     ring_state = RingState::FOLLOW_WALL;
-                   rclcpp::sleep_for(std::chrono::milliseconds(200));
+                    rclcpp::sleep_for(std::chrono::milliseconds(200));
                 }
                 break;
             }
